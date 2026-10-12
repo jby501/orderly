@@ -40,3 +40,6 @@ application-secret.properties
 # Legacy Java IDE files
 *.ctxt
 .mtj.tmp/
+
+# Codex local instructions
+AGENTS.md
