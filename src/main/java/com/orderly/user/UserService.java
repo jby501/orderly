@@ -51,13 +51,13 @@ public class UserService {
     private void validatePassword(String password) {
 
         if (password == null || password.isBlank()) {
-            throw new IllegalArgumentException("비밀번호는 필수입니다.");
+            throw new InvalidPasswordException("비밀번호는 필수입니다.");
         }
 
         int byteLength = password.getBytes(StandardCharsets.UTF_8).length;
 
         if (byteLength < 8 || byteLength > 72) {
-            throw new IllegalArgumentException(
+            throw new InvalidPasswordException(
                     "비밀번호는 UTF-8 기준 8~72바이트여야 합니다."
             );
         }

@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import com.orderly.user.InvalidPasswordException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -32,6 +33,20 @@ public class GlobalExceptionHandler {
         ErrorResponse response = new ErrorResponse(
                 "INVALID_INPUT",
                 "요청 값이 올바르지 않습니다."
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
+    }
+
+    @ExceptionHandler(InvalidPasswordException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidPassword(
+            InvalidPasswordException exception
+    ) {
+        ErrorResponse response = new ErrorResponse(
+                "INVALID_PASSWORD",
+                exception.getMessage()
         );
 
         return ResponseEntity
