@@ -7,8 +7,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -24,8 +22,8 @@ public class UserService {
             throw new DuplicateEmailException();
         }
 
-        // 2. BCrypt 비밀번호 길이 검증
-        validatePassword(request.password());
+        // 2. 비밀번호 정책 검증
+        PasswordPolicy.validate(request.password());
 
         // 3. 비밀번호 해싱
         String encodedPassword = passwordEncoder.encode(request.password());
@@ -48,18 +46,4 @@ public class UserService {
         );
     }
 
-    private void validatePassword(String password) {
-
-        if (password == null || password.isBlank()) {
-            throw new InvalidPasswordException("비밀번호는 필수입니다.");
-        }
-
-        int byteLength = password.getBytes(StandardCharsets.UTF_8).length;
-
-        if (byteLength < 8 || byteLength > 72) {
-            throw new InvalidPasswordException(
-                    "비밀번호는 UTF-8 기준 8~72바이트여야 합니다."
-            );
-        }
-    }
 }
