@@ -1,5 +1,6 @@
 package com.orderly.global.exception;
 
+import com.orderly.auth.InvalidCredentialsException;
 import com.orderly.global.dto.ErrorResponse;
 import com.orderly.user.DuplicateEmailException;
 import org.springframework.http.HttpStatus;
@@ -51,6 +52,20 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
+                .body(response);
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidCredentials(
+            InvalidCredentialsException exception
+    ) {
+        ErrorResponse response = new ErrorResponse(
+                "INVALID_CREDENTIALS",
+                "이메일 또는 비밀번호가 올바르지 않습니다."
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
                 .body(response);
     }
 
