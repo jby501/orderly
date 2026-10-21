@@ -41,7 +41,9 @@ class JwtTokenProviderTest {
 
         JwtConfig jwtConfig = new JwtConfig();
 
-        JwtEncoder jwtEncoder = jwtConfig.jwtEncoder(properties);
+        SecretKey signingKey = jwtConfig.jwtSecretKey(properties);
+
+        JwtEncoder jwtEncoder = jwtConfig.jwtEncoder(signingKey);
 
         jwtTokenProvider = new JwtTokenProvider(
                 jwtEncoder,
