@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.orderly.user.dto.UserMeResponse;
 
 @Service
 @RequiredArgsConstructor
@@ -43,6 +44,18 @@ public class UserService {
                 savedUser.getId(),
                 savedUser.getEmail(),
                 savedUser.getName()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public UserMeResponse getMe(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(UserNotFoundException::new);
+
+        return new UserMeResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getName()
         );
     }
 

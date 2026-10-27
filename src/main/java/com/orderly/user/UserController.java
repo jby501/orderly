@@ -7,6 +7,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.orderly.user.dto.UserMeResponse;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 @RestController
 @RequestMapping("/api/v1/users")
@@ -25,4 +28,14 @@ public class UserController {
                 .status(HttpStatus.CREATED)
                 .body(response);
     }
+
+    @GetMapping("/me")
+    public UserMeResponse getMe(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        Long userId = Long.valueOf(jwt.getSubject());
+
+        return userService.getMe(userId);
+    }
+
 }
