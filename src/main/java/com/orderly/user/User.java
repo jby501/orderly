@@ -1,5 +1,6 @@
 package com.orderly.user;
 
+import com.orderly.user.domain.UserRole;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -28,6 +29,11 @@ public class User {
     @Column(nullable = false, length = 100)
     private String name;
 
+    // 추가: 사용자의 역할을 문자열로 저장
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role", nullable = false, length = 20)
+    private UserRole role;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -40,5 +46,6 @@ public class User {
         this.email = email;
         this.password = password;
         this.name = name;
+        this.role = UserRole.USER; // 추가
     }
 }
