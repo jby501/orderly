@@ -1,37 +1,55 @@
+
 package com.orderly.auth;
 
 import com.orderly.auth.jwt.JwtConfig;
+import com.orderly.auth.jwt.JwtProperties;
+import com.orderly.auth.jwt.JwtRoleAuthenticationConverter;
+import com.orderly.auth.jwt.JwtTokenProvider;
 import com.orderly.config.SecurityConfig;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.context.WebApplicationContext;
-import org.springframework.web.servlet.config.annotation.EnableWebMvc;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import com.orderly.auth.jwt.JwtTokenProvider;
 import org.springframework.http.HttpHeaders;
-import com.orderly.auth.jwt.JwtProperties;
-import java.time.Duration;
-import java.util.Arrays;
-import java.util.Base64;
-import java.time.Instant;
+
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.List;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringJUnitWebConfig(JwtAuthenticationTest.TestConfig.class)
@@ -50,10 +68,28 @@ class JwtAuthenticationTest {
     @Autowired
     private JwtEncoder jwtEncoder;
 
+    // 실제 DB 조회 대신 인증 객체를 반환하는 Mock
+    @MockitoBean
+    private JwtRoleAuthenticationConverter jwtRoleAuthenticationConverter;
+
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
+        // JWT 검증에 성공하면 USER 권한을 가진 인증 객체 반환
+        given(jwtRoleAuthenticationConverter.convert(any(Jwt.class)))
+                .willAnswer(invocation -> {
+                    Jwt jwt = invocation.getArgument(0);
+
+                    return new JwtAuthenticationToken(
+                            jwt,
+                            List.of(
+                                    new SimpleGrantedAuthority("ROLE_USER")
+                            ),
+                            jwt.getSubject()
+                    );
+                });
+
         mvc = MockMvcBuilders
                 .webAppContextSetup(context)
                 .apply(springSecurity())
@@ -62,16 +98,20 @@ class JwtAuthenticationTest {
 
     @Test
     void 토큰이_없으면_401을_반환한다() throws Exception {
+        // when & then
         mvc.perform(get("/test/protected"))
                 .andExpect(status().isUnauthorized());
+
+        // 토큰이 없으면 권한 변환기를 호출하지 않아야 한다.
+        verifyNoInteractions(jwtRoleAuthenticationConverter);
     }
 
     @Test
     void 유효한_토큰이면_보호된_API에_접근한다() throws Exception {
-        // given: 사용자 ID가 1인 토큰 발급
+        // given
         String token = jwtTokenProvider.generateAccessToken(1L);
 
-        // when & then: 토큰을 보내면 접근 허용
+        // when & then
         mvc.perform(get("/test/protected")
                         .header(
                                 HttpHeaders.AUTHORIZATION,
@@ -79,11 +119,15 @@ class JwtAuthenticationTest {
                         ))
                 .andExpect(status().isOk())
                 .andExpect(content().string("인증 성공"));
+
+        // JWT 검증에 성공하면 권한 변환기가 호출되어야 한다.
+        verify(jwtRoleAuthenticationConverter)
+                .convert(any(Jwt.class));
     }
 
     @Test
     void 다른_키로_서명한_토큰이면_401을_반환한다() throws Exception {
-        // given: 서버에서 사용하는 것과 다른 테스트용 키 준비
+        // given: 서버에서 사용하는 것과 다른 키 준비
         byte[] differentKeyBytes = new byte[32];
         Arrays.fill(differentKeyBytes, (byte) 1);
 
@@ -95,7 +139,6 @@ class JwtAuthenticationTest {
                 Duration.ofMinutes(30)
         );
 
-        // 다른 키로 토큰을 발급할 객체 구성
         JwtConfig config = new JwtConfig();
 
         JwtTokenProvider differentProvider = new JwtTokenProvider(
@@ -107,17 +150,21 @@ class JwtAuthenticationTest {
 
         String token = differentProvider.generateAccessToken(1L);
 
-        // when & then: 서버가 서명을 신뢰하지 않아 거절
+        // when & then
         mvc.perform(get("/test/protected")
                         .header(
                                 HttpHeaders.AUTHORIZATION,
                                 "Bearer " + token
                         ))
                 .andExpect(status().isUnauthorized());
+
+        // 서명 검증에 실패하면 권한 변환기를 호출하지 않는다.
+        verifyNoInteractions(jwtRoleAuthenticationConverter);
     }
 
     @Test
     void 만료된_토큰이면_401을_반환한다() throws Exception {
+        // given
         Instant now = Instant.now();
 
         JwtClaimsSet claims = JwtClaimsSet.builder()
@@ -134,12 +181,16 @@ class JwtAuthenticationTest {
                 JwtEncoderParameters.from(header, claims)
         ).getTokenValue();
 
+        // when & then
         mvc.perform(get("/test/protected")
                         .header(
                                 HttpHeaders.AUTHORIZATION,
                                 "Bearer " + token
                         ))
                 .andExpect(status().isUnauthorized());
+
+        // 만료된 JWT는 권한 변환 단계까지 도달하지 않는다.
+        verifyNoInteractions(jwtRoleAuthenticationConverter);
     }
 
     @Configuration
