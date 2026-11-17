@@ -25,7 +25,9 @@ import tools.jackson.databind.ObjectMapper; // [추가]
 
 import java.time.Instant;
 import java.util.UUID;
+import java.math.BigDecimal;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -210,6 +212,42 @@ class ProductControllerIntegrationTest {
                                 .content(requestBody)
                 )
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 인증_없이_상품을_조회할_수_있다() throws Exception {
+        // given
+        Product product = productRepository.saveAndFlush(
+                new Product(
+                        "무선 키보드",
+                        "블루투스 무선 키보드",
+                        new BigDecimal("89000.00"),
+                        100
+                )
+        );
+
+        // when & then
+        mockMvc.perform(
+                        get("/api/v1/products/{productId}", product.getId())
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(product.getId()))
+                .andExpect(jsonPath("$.name").value("무선 키보드"))
+                .andExpect(jsonPath("$.description").value("블루투스 무선 키보드"))
+                .andExpect(jsonPath("$.price").value(89000))
+                .andExpect(jsonPath("$.stockQuantity").value(100));
+    }
+
+    @Test
+    void 존재하지_않는_상품을_조회하면_404를_반환한다() throws Exception {
+        // given
+        Long nonexistentProductId = Long.MAX_VALUE;
+
+        // when & then
+        mockMvc.perform(
+                        get("/api/v1/products/{productId}", nonexistentProductId)
+                )
+                .andExpect(status().isNotFound());
     }
 
     private User createUser(UserRole role) {

@@ -5,10 +5,7 @@ import com.orderly.product.dto.ProductResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
 
@@ -30,5 +27,14 @@ public class ProductController {
         return ResponseEntity
                 .created(location)
                 .body(response);
+    }
+
+    @GetMapping("/{productId}")
+    public ResponseEntity<ProductResponse> getProduct(
+            @PathVariable Long productId
+    ) {
+        ProductResponse response = productService.getProduct(productId);
+
+        return ResponseEntity.ok(response);
     }
 }
