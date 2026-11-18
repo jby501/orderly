@@ -3,6 +3,8 @@ package com.orderly.product;
 import com.orderly.product.dto.ProductCreateRequest;
 import com.orderly.product.dto.ProductResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,5 +42,11 @@ public class ProductService {
                 );
 
         return ProductResponse.from(product);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ProductResponse> getProducts(Pageable pageable) {
+        return productRepository.findAll(pageable)
+                .map(ProductResponse::from);
     }
 }

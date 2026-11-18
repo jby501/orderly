@@ -1,11 +1,17 @@
 package com.orderly.product;
 
+import com.orderly.global.dto.PageResponse;
 import com.orderly.product.dto.ProductCreateRequest;
 import com.orderly.product.dto.ProductResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.data.domain.Sort;
+import org.springframework.web.bind.annotation.GetMapping;
 
 import java.net.URI;
 
@@ -34,6 +40,23 @@ public class ProductController {
             @PathVariable Long productId
     ) {
         ProductResponse response = productService.getProduct(productId);
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping
+    public ResponseEntity<PageResponse<ProductResponse>> getProducts(
+            @PageableDefault(
+                    size = 10,
+                    sort = "id",
+                    direction = Sort.Direction.DESC
+            ) Pageable pageable
+    ) {
+        Page<ProductResponse> products =
+                productService.getProducts(pageable);
+
+        PageResponse<ProductResponse> response =
+                PageResponse.from(products);
 
         return ResponseEntity.ok(response);
     }
