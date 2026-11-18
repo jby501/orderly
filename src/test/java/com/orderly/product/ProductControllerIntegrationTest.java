@@ -22,6 +22,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.ObjectMapper; // [추가]
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -30,11 +32,13 @@ import java.math.BigDecimal;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @Testcontainers
+@ActiveProfiles("test") // [추가] 테스트 전용 설정 활성화\
 class ProductControllerIntegrationTest {
 
     @Container
@@ -59,6 +63,11 @@ class ProductControllerIntegrationTest {
 
     @Autowired
     ObjectMapper objectMapper;
+
+    @BeforeEach
+    void cleanUp() {
+        productRepository.deleteAllInBatch();
+    }
 
     @Test
     void 관리자는_상품을_등록할_수_있다() throws Exception {
@@ -250,6 +259,76 @@ class ProductControllerIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void 상품_목록을_페이지_단위로_조회할_수_있다() throws Exception {
+        // given
+        for (int i = 1; i <= 25; i++) {
+            productRepository.save(
+                    new Product(
+                            "상품 " + i,
+                            "테스트 상품",
+                            new BigDecimal("10000.00"),
+                            100
+                    )
+            );
+        }
+
+        productRepository.flush();
+
+        // when & then - 첫 번째 페이지
+        mockMvc.perform(
+                        get("/api/v1/products")
+                                .param("page", "0")
+                                .param("size", "10")
+                                .param("sort", "id,asc")
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(10))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(10))
+                .andExpect(jsonPath("$.totalElements").value(25))
+                .andExpect(jsonPath("$.totalPages").value(3))
+                .andExpect(jsonPath("$.hasNext").value(true))
+                .andExpect(jsonPath("$.content[0].name").value("상품 1"));
+
+        // when & then - 두 번째 페이지
+        mockMvc.perform(
+                        get("/api/v1/products")
+                                .param("page", "1")
+                                .param("size", "10")
+                                .param("sort", "id,asc")
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(10))
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.hasNext").value(true));
+
+        // when & then - 마지막 페이지
+        mockMvc.perform(
+                        get("/api/v1/products")
+                                .param("page", "2")
+                                .param("size", "10")
+                                .param("sort", "id,asc")
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(5))
+                .andExpect(jsonPath("$.page").value(2))
+                .andExpect(jsonPath("$.hasNext").value(false))
+                .andExpect(jsonPath("$.content[4].name").value("상품 25"));
+    }
+
+    @Test
+    void 요청한_페이지_크기가_최댓값을_초과하면_100으로_제한된다() throws Exception {
+        // when & then
+        mockMvc.perform(
+                        get("/api/v1/products")
+                                .param("page", "0")
+                                .param("size", "1000")
+                )
+                .andDo(print()) // [추가] 실제 요청과 응답 출력
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size").value(100));
+    }
     private User createUser(UserRole role) {
         String suffix = UUID.randomUUID().toString();
 
