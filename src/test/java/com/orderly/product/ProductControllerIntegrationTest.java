@@ -4,6 +4,8 @@ package com.orderly.product;
 import com.orderly.user.User;
 import com.orderly.user.UserRepository;
 import com.orderly.user.domain.UserRole;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -32,6 +34,7 @@ import java.math.BigDecimal;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -329,6 +332,121 @@ class ProductControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.size").value(100));
     }
+    @Test
+    void 관리자는_상품_상세를_수정하고_재고는_유지한다() throws Exception {
+        Product product = createProductForUpdate();
+
+        mockMvc.perform(put("/api/v1/products/{id}", product.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerFor(UserRole.ADMIN))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"새 상품명","description":"새 설명","price":12000.50,"stockQuantity":1,"role":"USER"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("새 상품명"))
+                .andExpect(jsonPath("$.description").value("새 설명"))
+                .andExpect(jsonPath("$.price").value(12000.5))
+                .andExpect(jsonPath("$.stockQuantity").value(25));
+
+        Product updated = productRepository.findById(product.getId()).orElseThrow();
+        assertThat(updated.getName()).isEqualTo("새 상품명");
+        assertThat(updated.getDescription()).isEqualTo("새 설명");
+        assertThat(updated.getPrice()).isEqualByComparingTo("12000.50");
+        assertThat(updated.getStockQuantity()).isEqualTo(25);
+    }
+
+    @Test
+    void 일반_사용자는_상품을_수정할_수_없다() throws Exception {
+        Product product = createProductForUpdate();
+
+        mockMvc.perform(put("/api/v1/products/{id}", product.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerFor(UserRole.USER))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"새 상품명","price":12000}
+                                """))
+                .andExpect(status().isForbidden());
+
+        assertThat(productRepository.findById(product.getId()).orElseThrow().getName())
+                .isEqualTo("기존 상품명");
+    }
+
+    @Test
+    void 인증되지_않은_사용자는_상품을_수정할_수_없다() throws Exception {
+        Product product = createProductForUpdate();
+
+        mockMvc.perform(put("/api/v1/products/{id}", product.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"새 상품명","price":12000}
+                                """))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void 없는_상품을_수정하면_404를_반환한다() throws Exception {
+        mockMvc.perform(put("/api/v1/products/{id}", Long.MAX_VALUE)
+                        .header(HttpHeaders.AUTHORIZATION, bearerFor(UserRole.ADMIN))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"새 상품명","price":12000}
+                                """))
+                .andExpect(status().isNotFound());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"name\":\" \",\"price\":12000}",
+            "{\"name\":\"새 상품명\",\"price\":-1}",
+            "{\"name\":\"새 상품명\",\"price\":10000000000000}",
+            "{\"name\":\"새 상품명\",\"price\":1.001}",
+            "{\"price\":12000}",
+            "{\"name\":\"새 상품명\"}"
+    })
+    void 잘못된_상세정보로_상품을_수정하면_400을_반환한다(String body) throws Exception {
+        Product product = createProductForUpdate();
+
+        mockMvc.perform(put("/api/v1/products/{id}", product.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerFor(UserRole.ADMIN))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+
+        Product unchanged = productRepository.findById(product.getId()).orElseThrow();
+        assertThat(unchanged.getName()).isEqualTo("기존 상품명");
+        assertThat(unchanged.getPrice()).isEqualByComparingTo("10000.00");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"name\":\"새 상품명\",\"price\":12000}",
+            "{\"name\":\"새 상품명\",\"description\":null,\"price\":12000}"
+    })
+    void 설명이_없으면_기존_설명을_비운다(String body) throws Exception {
+        Product product = createProductForUpdate();
+
+        mockMvc.perform(put("/api/v1/products/{id}", product.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerFor(UserRole.ADMIN))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.description").value(org.hamcrest.Matchers.nullValue()));
+
+        assertThat(productRepository.findById(product.getId()).orElseThrow().getDescription())
+                .isNull();
+    }
+
+    private Product createProductForUpdate() {
+        return productRepository.saveAndFlush(
+                new Product("기존 상품명", "기존 설명", new BigDecimal("10000.00"), 25)
+        );
+    }
+
+    private String bearerFor(UserRole role) {
+        return "Bearer " + createToken(createUser(role).getId());
+    }
+
     private User createUser(UserRole role) {
         String suffix = UUID.randomUUID().toString();
 

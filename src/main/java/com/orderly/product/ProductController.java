@@ -3,6 +3,7 @@ package com.orderly.product;
 import com.orderly.global.dto.PageResponse;
 import com.orderly.product.dto.ProductCreateRequest;
 import com.orderly.product.dto.ProductResponse;
+import com.orderly.product.dto.ProductUpdateRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +34,14 @@ public class ProductController {
         return ResponseEntity
                 .created(location)
                 .body(response);
+    }
+
+    @PutMapping("/{productId}")
+    public ResponseEntity<ProductResponse> updateProduct(
+            @PathVariable Long productId,
+            @Valid @RequestBody ProductUpdateRequest request
+    ) {
+        return ResponseEntity.ok(productService.updateProduct(productId, request));
     }
 
     @GetMapping("/{productId}")

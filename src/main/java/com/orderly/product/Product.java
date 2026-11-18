@@ -61,6 +61,15 @@ public class Product {
         this.stockQuantity = stockQuantity;
     }
 
+    public void updateDetails(String name, String description, BigDecimal price) {
+        validateName(name);
+        validatePrice(price);
+
+        this.name = name;
+        this.description = description;
+        this.price = price;
+    }
+
     private void validateName(String name) {
         if (name == null || name.isBlank() || name.length() > 150) {
             throw new IllegalArgumentException("상품명은 1~150자 이내여야 합니다.");
