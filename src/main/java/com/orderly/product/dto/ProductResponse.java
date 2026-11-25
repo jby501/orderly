@@ -1,6 +1,7 @@
 package com.orderly.product.dto;
 
 import com.orderly.product.Product;
+import com.orderly.product.ProductStatus;
 
 import java.math.BigDecimal;
 
@@ -9,7 +10,8 @@ public record ProductResponse(
         String name,
         String description,
         BigDecimal price,
-        Integer stockQuantity
+        Integer stockQuantity,
+        ProductStatus status
 ) {
 
     public static ProductResponse from(Product product) {
@@ -18,7 +20,8 @@ public record ProductResponse(
                 product.getName(),
                 product.getDescription(),
                 product.getPrice(),
-                product.getStockQuantity()
+                product.getStockQuantity(),
+                product.getStatus()
         );
     }
 }

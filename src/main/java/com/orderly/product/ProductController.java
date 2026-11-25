@@ -4,6 +4,7 @@ import com.orderly.global.dto.PageResponse;
 import com.orderly.product.dto.ProductCreateRequest;
 import com.orderly.product.dto.ProductResponse;
 import com.orderly.product.dto.ProductUpdateRequest;
+import com.orderly.product.dto.ProductStatusUpdateRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -42,6 +43,17 @@ public class ProductController {
             @Valid @RequestBody ProductUpdateRequest request
     ) {
         return ResponseEntity.ok(productService.updateProduct(productId, request));
+    }
+
+    @PatchMapping("/{productId}/status")
+    public ResponseEntity<ProductResponse> updateStatus(
+            @PathVariable Long productId,
+            @Valid @RequestBody ProductStatusUpdateRequest request
+    ) {
+        ProductResponse response =
+                productService.updateStatus(productId, request);
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{productId}")

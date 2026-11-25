@@ -3,6 +3,7 @@ package com.orderly.product;
 import com.orderly.product.dto.ProductCreateRequest;
 import com.orderly.product.dto.ProductResponse;
 import com.orderly.product.dto.ProductUpdateRequest;
+import com.orderly.product.dto.ProductStatusUpdateRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -34,7 +35,16 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public ProductResponse getProduct(Long productId) {
-        Product product = findProduct(productId);
+        Product product = productRepository.findByIdAndStatus(
+                        productId,
+                        ProductStatus.ON_SALE
+                )
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "상품을 찾을 수 없습니다."
+                        )
+                );
 
         return ProductResponse.from(product);
     }
@@ -49,8 +59,21 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public Page<ProductResponse> getProducts(Pageable pageable) {
-        return productRepository.findAll(pageable)
+        return productRepository
+                .findAllByStatus(ProductStatus.ON_SALE, pageable)
                 .map(ProductResponse::from);
+    }
+
+    @Transactional
+    public ProductResponse updateStatus(
+            Long productId,
+            ProductStatusUpdateRequest request
+    ) {
+        Product product = findProduct(productId);
+
+        product.changeStatus(request.status());
+
+        return ProductResponse.from(product);
     }
 
     private Product findProduct(Long productId) {
@@ -62,4 +85,6 @@ public class ProductService {
                         )
                 );
     }
+
+
 }

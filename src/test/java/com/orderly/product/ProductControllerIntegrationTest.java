@@ -37,6 +37,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -435,6 +436,353 @@ class ProductControllerIntegrationTest {
 
         assertThat(productRepository.findById(product.getId()).orElseThrow().getDescription())
                 .isNull();
+    }
+
+    @Test
+    void 관리자는_상품_판매를_중지할_수_있다() throws Exception {
+        //Given: 판매 중인 상품과 기존 재고 준비
+        Product product = createProductForUpdate();
+        Integer originalStock = product.getStockQuantity();
+
+        assertThat(product.getStatus())
+                .isEqualTo(ProductStatus.ON_SALE);
+
+        //When: 관리자가 판매 중지 요청
+        //Then: 응답의 상태와 재고 확인
+        mockMvc.perform(
+                patch("/api/v1/products/{productId}/status", product.getId())
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                bearerFor(UserRole.ADMIN)
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                 "status": "SUSPENDED"
+                                }
+                                """)
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(product.getId()))
+                .andExpect(jsonPath("$.status").value("SUSPENDED"))
+                .andExpect(jsonPath("$.stockQuantity").value(originalStock));
+
+        //Then: DB에서 다시 읽어 실제 저장 결과 확인
+        Product updated = productRepository
+                .findById(product.getId())
+                .orElseThrow();
+
+        assertThat(updated.getStatus())
+                .isEqualTo(ProductStatus.SUSPENDED);
+
+        assertThat(updated.getStockQuantity())
+                .isEqualTo(originalStock);
+    }
+
+    @Test
+    void 관리자는_상품_판매를_재개할_수_있다() throws Exception {
+        // Given: 판매 중지 상품을 DB에 준비
+        Product product = createProductForUpdate();
+        product.changeStatus(ProductStatus.SUSPENDED);
+        productRepository.saveAndFlush(product);
+
+        Integer originalStock = product.getStockQuantity();
+
+        // When & Then: 관리자가 판매 재개 요청
+        mockMvc.perform(
+                        patch(
+                                "/api/v1/products/{productId}/status",
+                                product.getId()
+                        )
+                                .header(
+                                        HttpHeaders.AUTHORIZATION,
+                                        bearerFor(UserRole.ADMIN)
+                                )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                    {
+                                      "status": "ON_SALE"
+                                    }
+                                    """)
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(product.getId()))
+                .andExpect(jsonPath("$.status").value("ON_SALE"))
+                .andExpect(jsonPath("$.stockQuantity").value(originalStock));
+
+        // Then: DB의 상태와 재고 확인
+        Product updated = productRepository
+                .findById(product.getId())
+                .orElseThrow();
+
+        assertThat(updated.getStatus())
+                .isEqualTo(ProductStatus.ON_SALE);
+
+        assertThat(updated.getStockQuantity())
+                .isEqualTo(originalStock);
+    }
+
+    @Test
+    void 일반_사용자는_판매_상태를_변경할_수_없다() throws Exception {
+        // Given: 기존 상품과 일반 사용자 토큰 준비
+        Product product = createProductForUpdate();
+
+        // When & Then: 일반 사용자의 상태 변경 요청은 거절
+        mockMvc.perform(
+                        patch(
+                                "/api/v1/products/{productId}/status",
+                                product.getId()
+                        )
+                                .header(
+                                        HttpHeaders.AUTHORIZATION,
+                                        bearerFor(UserRole.USER)
+                                )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                    {
+                                      "status": "SUSPENDED"
+                                    }
+                                    """)
+                )
+                .andExpect(status().isForbidden());
+
+        // Then: 거절된 요청으로 DB 상태가 바뀌지 않았는지 확인
+        Product unchanged = productRepository
+                .findById(product.getId())
+                .orElseThrow();
+
+        assertThat(unchanged.getStatus())
+                .isEqualTo(ProductStatus.ON_SALE);
+    }
+
+    @Test
+    void 인증되지_않으면_판매_상태를_변경할_수_없다() throws Exception {
+        // Given
+        Product product = createProductForUpdate();
+
+        // When & Then: Authorization 헤더 없이 요청
+        mockMvc.perform(
+                        patch(
+                                "/api/v1/products/{productId}/status",
+                                product.getId()
+                        )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                    {
+                                      "status": "SUSPENDED"
+                                    }
+                                    """)
+                )
+                .andExpect(status().isUnauthorized());
+
+        // Then
+        Product unchanged = productRepository
+                .findById(product.getId())
+                .orElseThrow();
+
+        assertThat(unchanged.getStatus())
+                .isEqualTo(ProductStatus.ON_SALE);
+    }
+
+    @Test
+    void 없는_상품의_판매_상태를_변경하면_404를_반환한다() throws Exception {
+        // When & Then: 관리자가 존재하지 않는 상품에 정상 요청 전송
+        mockMvc.perform(
+                        patch(
+                                "/api/v1/products/{productId}/status",
+                                Long.MAX_VALUE
+                        )
+                                .header(
+                                        HttpHeaders.AUTHORIZATION,
+                                        bearerFor(UserRole.ADMIN)
+                                )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                    {
+                                      "status": "SUSPENDED"
+                                    }
+                                    """)
+                )
+                .andExpect(status().isNotFound());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{}",
+            "{\"status\":null}"
+    })
+    void 판매_상태가_없으면_400을_반환한다(String body) throws Exception {
+        // Given: 변경 전 상품 준비
+        Product product = createProductForUpdate();
+        Integer originalStock = product.getStockQuantity();
+
+        // When & Then: 상태가 없는 요청 전송
+        mockMvc.perform(
+                        patch(
+                                "/api/v1/products/{productId}/status",
+                                product.getId()
+                        )
+                                .header(
+                                        HttpHeaders.AUTHORIZATION,
+                                        bearerFor(UserRole.ADMIN)
+                                )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(body)
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.message")
+                        .value("요청 값이 올바르지 않습니다."));
+
+        // Then: 잘못된 요청으로 DB가 변경되지 않았는지 확인
+        Product unchanged = productRepository
+                .findById(product.getId())
+                .orElseThrow();
+
+        assertThat(unchanged.getStatus())
+                .isEqualTo(ProductStatus.ON_SALE);
+
+        assertThat(unchanged.getStockQuantity())
+                .isEqualTo(originalStock);
+    }
+
+    @Test
+    void 정의되지_않은_판매_상태이면_400을_반환한다() throws Exception {
+        // Given
+        Product product = createProductForUpdate();
+        Integer originalStock = product.getStockQuantity();
+
+        // When & Then
+        mockMvc.perform(
+                        patch(
+                                "/api/v1/products/{productId}/status",
+                                product.getId()
+                        )
+                                .header(
+                                        HttpHeaders.AUTHORIZATION,
+                                        bearerFor(UserRole.ADMIN)
+                                )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                    {
+                                      "status": "STOP"
+                                    }
+                                    """)
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.message")
+                        .value("요청 본문의 형식이나 값이 올바르지 않습니다."));
+
+        Product unchanged = productRepository
+                .findById(product.getId())
+                .orElseThrow();
+
+        assertThat(unchanged.getStatus())
+                .isEqualTo(ProductStatus.ON_SALE);
+
+        assertThat(unchanged.getStockQuantity())
+                .isEqualTo(originalStock);
+    }
+
+    @Test
+    void 판매_중지_상품은_공개_상세에서_조회할_수_없다() throws Exception {
+        // Given: 판매 중지 상품을 DB에 저장
+        Product product = createProductForUpdate();
+        product.changeStatus(ProductStatus.SUSPENDED);
+        productRepository.saveAndFlush(product);
+
+        // When & Then: 공개 상세 조회는 404
+        mockMvc.perform(
+                        get(
+                                "/api/v1/products/{productId}",
+                                product.getId()
+                        )
+                )
+                .andExpect(status().isNotFound());
+
+        // Then: 공개되지 않을 뿐, DB에서 삭제된 것은 아님
+        Product stored = productRepository
+                .findById(product.getId())
+                .orElseThrow();
+
+        assertThat(stored.getStatus())
+                .isEqualTo(ProductStatus.SUSPENDED);
+    }
+
+    @Test
+    void 공개_목록은_판매_중인_상품만_페이지로_반환한다() throws Exception {
+        // Given: 판매 중 상품 3개
+        Product first = productRepository.saveAndFlush(
+                new Product(
+                        "판매 상품 1",
+                        "설명",
+                        new BigDecimal("10000.00"),
+                        10
+                )
+        );
+
+        // 판매 중지 상품이 중간 ID에 들어가도록 저장
+        Product suspended = productRepository.saveAndFlush(
+                new Product(
+                        "판매 중지 상품",
+                        "설명",
+                        new BigDecimal("10000.00"),
+                        10
+                )
+        );
+
+        suspended.changeStatus(ProductStatus.SUSPENDED);
+        productRepository.saveAndFlush(suspended);
+
+        Product second = productRepository.saveAndFlush(
+                new Product(
+                        "판매 상품 2",
+                        "설명",
+                        new BigDecimal("20000.00"),
+                        20
+                )
+        );
+
+        Product third = productRepository.saveAndFlush(
+                new Product(
+                        "판매 상품 3",
+                        "설명",
+                        new BigDecimal("30000.00"),
+                        30
+                )
+        );
+
+        // When & Then: 첫 페이지
+        mockMvc.perform(
+                        get("/api/v1/products")
+                                .param("page", "0")
+                                .param("size", "2")
+                                .param("sort", "id,asc")
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.content[0].id").value(first.getId()))
+                .andExpect(jsonPath("$.content[1].id").value(second.getId()))
+                .andExpect(jsonPath("$.content[0].status").value("ON_SALE"))
+                .andExpect(jsonPath("$.content[1].status").value("ON_SALE"))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.hasNext").value(true));
+
+        // When & Then: 마지막 페이지
+        mockMvc.perform(
+                        get("/api/v1/products")
+                                .param("page", "1")
+                                .param("size", "2")
+                                .param("sort", "id,asc")
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(third.getId()))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.hasNext").value(false));
     }
 
     private Product createProductForUpdate() {

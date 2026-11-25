@@ -11,6 +11,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -36,6 +38,10 @@ public class Product {
 
     @Column(name = "stock_quantity", nullable = false)
     private Integer stockQuantity;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private ProductStatus status = ProductStatus.ON_SALE;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -68,6 +74,16 @@ public class Product {
         this.name = name;
         this.description = description;
         this.price = price;
+    }
+
+    public void changeStatus(ProductStatus status) {
+        if (status == null) {
+            throw new IllegalArgumentException(
+                    "상품 판매 상태는 필수입니다."
+            );
+        }
+
+        this.status = status;
     }
 
     private void validateName(String name) {
