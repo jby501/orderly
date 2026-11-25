@@ -785,6 +785,66 @@ class ProductControllerIntegrationTest {
                 .andExpect(jsonPath("$.hasNext").value(false));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "notAField",
+            "created_at",
+            "status"
+    })
+    void 허용하지_않은_정렬_필드이면_400을_반환한다(
+            String property
+    ) throws Exception {
+        mockMvc.perform(
+                        get("/api/v1/products")
+                                .param("sort", property + ",asc")
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_SORT"));
+    }
+
+    @Test
+    void 여러_정렬_조건_중_잘못된_필드가_있으면_400을_반환한다()
+            throws Exception {
+        mockMvc.perform(
+                        get("/api/v1/products")
+                                .param("sort", "price,asc", "notAField,desc")
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_SORT"));
+    }
+
+    @Test
+    void 상품을_가격_오름차순으로_조회할_수_있다() throws Exception {
+        // Given: 비싼 상품을 먼저 저장
+        Product expensive = productRepository.saveAndFlush(
+                new Product(
+                        "비싼 상품",
+                        "설명",
+                        new BigDecimal("20000.00"),
+                        10
+                )
+        );
+
+        Product cheap = productRepository.saveAndFlush(
+                new Product(
+                        "저렴한 상품",
+                        "설명",
+                        new BigDecimal("10000.00"),
+                        10
+                )
+        );
+
+        // When & Then: 저장 순서가 아니라 가격 순서로 반환
+        mockMvc.perform(
+                        get("/api/v1/products")
+                                .param("sort", "price,asc")
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.content[0].id").value(cheap.getId()))
+                .andExpect(jsonPath("$.content[1].id").value(expensive.getId()));
+    }
+
     private Product createProductForUpdate() {
         return productRepository.saveAndFlush(
                 new Product("기존 상품명", "기존 설명", new BigDecimal("10000.00"), 25)

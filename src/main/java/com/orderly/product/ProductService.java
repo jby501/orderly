@@ -1,5 +1,6 @@
 package com.orderly.product;
 
+import java.util.Set;
 import com.orderly.product.dto.ProductCreateRequest;
 import com.orderly.product.dto.ProductResponse;
 import com.orderly.product.dto.ProductUpdateRequest;
@@ -16,6 +17,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class ProductService {
 
+    private static final Set<String> ALLOWED_SORT_PROPERTIES =
+            Set.of("id", "name", "price", "createdAt");
     private final ProductRepository productRepository;
 
     @Transactional
@@ -59,6 +62,8 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public Page<ProductResponse> getProducts(Pageable pageable) {
+        validateSort(pageable);
+
         return productRepository
                 .findAllByStatus(ProductStatus.ON_SALE, pageable)
                 .map(ProductResponse::from);
@@ -86,5 +91,14 @@ public class ProductService {
                 );
     }
 
+    private void validateSort(Pageable pageable) {
+        for (var order : pageable.getSort()) {
+            String property = order.getProperty();
+
+            if (!ALLOWED_SORT_PROPERTIES.contains(property)) {
+                throw new InvalidProductSortException();
+            }
+        }
+    }
 
 }
