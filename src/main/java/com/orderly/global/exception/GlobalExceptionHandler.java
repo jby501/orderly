@@ -3,6 +3,7 @@ package com.orderly.global.exception;
 import com.orderly.auth.InvalidCredentialsException;
 import com.orderly.global.dto.ErrorResponse;
 import com.orderly.user.DuplicateEmailException;
+import com.orderly.product.InvalidProductSortException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.orderly.user.InvalidPasswordException;
 import com.orderly.user.UserNotFoundException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -81,6 +83,34 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
+                .body(response);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableMessage(
+            HttpMessageNotReadableException exception
+    ) {
+        ErrorResponse response = new ErrorResponse(
+                "INVALID_INPUT",
+                "요청 본문의 형식이나 값이 올바르지 않습니다."
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
+    }
+
+    @ExceptionHandler(InvalidProductSortException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidProductSort(
+            InvalidProductSortException exception
+    ) {
+        ErrorResponse response = new ErrorResponse(
+                "INVALID_SORT",
+                exception.getMessage()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
                 .body(response);
     }
 

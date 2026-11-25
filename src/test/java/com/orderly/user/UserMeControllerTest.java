@@ -1,33 +1,47 @@
+
 package com.orderly.user;
 
 import com.orderly.auth.jwt.JwtConfig;
+import com.orderly.auth.jwt.JwtRoleAuthenticationConverter;
 import com.orderly.config.SecurityConfig;
 import com.orderly.global.exception.GlobalExceptionHandler;
 import com.orderly.user.dto.UserMeResponse;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.context.WebApplicationContext;
-import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+import org.springframework.http.HttpHeaders;
+
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.JwsHeader;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
 import java.time.Instant;
+import java.util.List;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.mockito.BDDMockito.given;
+
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -49,11 +63,29 @@ class UserMeControllerTest {
     @Autowired
     private JwtEncoder jwtEncoder;
 
+    // SecurityConfig에 필요한 Converter를 Mock Bean으로 등록
+    @MockitoBean
+    private JwtRoleAuthenticationConverter jwtRoleAuthenticationConverter;
+
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         reset(userService);
+
+        // 유효한 JWT가 전달되면 USER 권한을 가진 인증 객체 반환
+        given(jwtRoleAuthenticationConverter.convert(any(Jwt.class)))
+                .willAnswer(invocation -> {
+                    Jwt jwt = invocation.getArgument(0);
+
+                    return new JwtAuthenticationToken(
+                            jwt,
+                            List.of(
+                                    new SimpleGrantedAuthority("ROLE_USER")
+                            ),
+                            jwt.getSubject()
+                    );
+                });
 
         mvc = MockMvcBuilders
                 .webAppContextSetup(context)
@@ -63,6 +95,7 @@ class UserMeControllerTest {
 
     @Test
     void 인증된_사용자의_정보를_반환한다() throws Exception {
+        // given: 사용자 ID가 2인 회원의 조회 결과 설정
         when(userService.getMe(2L))
                 .thenReturn(new UserMeResponse(
                         2L,
@@ -70,6 +103,7 @@ class UserMeControllerTest {
                         "로그인테스트"
                 ));
 
+        // when & then
         mvc.perform(get("/api/v1/users/me")
                         .with(jwt().jwt(builder ->
                                 builder.subject("2")
@@ -87,9 +121,11 @@ class UserMeControllerTest {
 
     @Test
     void 회원이_없으면_404를_반환한다() throws Exception {
+        // given: 사용자 조회 시 회원이 없다고 가정
         when(userService.getMe(999L))
                 .thenThrow(new UserNotFoundException());
 
+        // when & then
         mvc.perform(get("/api/v1/users/me")
                         .with(jwt().jwt(builder ->
                                 builder.subject("999")
@@ -105,6 +141,7 @@ class UserMeControllerTest {
 
     @Test
     void 인증되지_않으면_401을_반환한다() throws Exception {
+        // when & then
         mvc.perform(get("/api/v1/users/me"))
                 .andExpect(status().isUnauthorized());
 
@@ -113,6 +150,7 @@ class UserMeControllerTest {
 
     @Test
     void 사용자_ID가_잘못된_JWT는_401을_반환한다() throws Exception {
+        // given: Subject가 숫자가 아닌 JWT 생성
         Instant now = Instant.now();
 
         JwtClaimsSet claims = JwtClaimsSet.builder()
@@ -121,18 +159,24 @@ class UserMeControllerTest {
                 .expiresAt(now.plusSeconds(1800))
                 .build();
 
-        JwsHeader header = JwsHeader.with(MacAlgorithm.HS256)
+        JwsHeader header = JwsHeader
+                .with(MacAlgorithm.HS256)
                 .build();
 
         String token = jwtEncoder.encode(
                 JwtEncoderParameters.from(header, claims)
         ).getTokenValue();
 
+        // when & then
         mvc.perform(get("/api/v1/users/me")
-                        .header("Authorization", "Bearer " + token))
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + token
+                        ))
                 .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(userService);
+        verifyNoInteractions(jwtRoleAuthenticationConverter);
     }
 
     @Configuration
